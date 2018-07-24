@@ -37,9 +37,11 @@ function title {
 
 ##############################################
 # Update version strings
-title 'Determine version'
-. $script_dir/version.sh $1
-echo -n $version > ./artifacts/version
+if [ "$1" != "official" ]; then
+    title 'Determine version'
+    . $script_dir/version.sh $1
+    echo -n $version > ./artifacts/version
+fi
 
 ##############################################
 # build product packages
@@ -60,30 +62,32 @@ fi
 
 ##############################################
 # build test packages
-title 'Build Azure CLI tests package'
 
-for test_src in $(find src/command_modules -name tests -type d); do
-    rel_path=${test_src##src/command_modules/}
-    rel_path=(${rel_path/\// })
-    rel_path=${rel_path[1]}
+if [ "$1" != "official" ]; then
+    title 'Build Azure CLI tests package'
 
-    mkdir -p $testsrc_dir/$rel_path
-    cp -R $test_src/* $testsrc_dir/$rel_path
-done
-
-if [ "$target_profile" == "latest" ]; then
-    # don't pack core tests for profiles other than latest
-    for test_src in $(find src -name tests | grep -v command_modules); do
-        rel_path=${test_src##src/}
+    for test_src in $(find src/command_modules -name tests -type d); do
+        rel_path=${test_src##src/command_modules/}
         rel_path=(${rel_path/\// })
         rel_path=${rel_path[1]}
 
         mkdir -p $testsrc_dir/$rel_path
         cp -R $test_src/* $testsrc_dir/$rel_path
     done
-fi
 
-cat >$testsrc_dir/setup.py <<EOL
+    if [ "$target_profile" == "latest" ]; then
+        # don't pack core tests for profiles other than latest
+        for test_src in $(find src -name tests | grep -v command_modules); do
+            rel_path=${test_src##src/}
+            rel_path=(${rel_path/\// })
+            rel_path=${rel_path[1]}
+
+            mkdir -p $testsrc_dir/$rel_path
+            cp -R $test_src/* $testsrc_dir/$rel_path
+        done
+    fi
+
+    cat >$testsrc_dir/setup.py <<EOL
 #!/usr/bin/env python
 
 from setuptools import setup
@@ -121,23 +125,23 @@ setup(
     packages=[
 EOL
 
-if [ "$target_profile" == "latest" ]; then
-    echo "        'azure.cli.core.tests'," >>$testsrc_dir/setup.py
-fi
-
-for name in `ls src/command_modules | grep azure-cli-`; do
-    module_name=${name##azure-cli-}
-    test_folder=src/command_modules/$name/azure/cli/command_modules/$module_name/tests
-    if [ -d $test_folder ]; then
-        echo "        'azure.cli.command_modules.$module_name.tests'," >>$testsrc_dir/setup.py
-        if [ -d $test_folder/$target_profile ]; then
-            echo "        'azure.cli.command_modules.$module_name.tests.$target_profile'," >>$testsrc_dir/setup.py
-        fi
+    if [ "$target_profile" == "latest" ]; then
+        echo "        'azure.cli.core.tests'," >>$testsrc_dir/setup.py
     fi
-done
+
+    for name in `ls src/command_modules | grep azure-cli-`; do
+        module_name=${name##azure-cli-}
+        test_folder=src/command_modules/$name/azure/cli/command_modules/$module_name/tests
+        if [ -d $test_folder ]; then
+            echo "        'azure.cli.command_modules.$module_name.tests'," >>$testsrc_dir/setup.py
+            if [ -d $test_folder/$target_profile ]; then
+                echo "        'azure.cli.command_modules.$module_name.tests.$target_profile'," >>$testsrc_dir/setup.py
+            fi
+        fi
+    done
 
 
-cat >>$testsrc_dir/setup.py <<EOL
+    cat >>$testsrc_dir/setup.py <<EOL
     ],
     package_data={'': ['recordings/*.yaml',
                        'data/*.zip',
@@ -168,24 +172,25 @@ cat >>$testsrc_dir/setup.py <<EOL
 )
 EOL
 
-cat >>$testsrc_dir/setup.cfg <<EOL
+    cat >>$testsrc_dir/setup.cfg <<EOL
 [bdist_wheel]
 universal=1
 EOL
 
-cat >>$testsrc_dir/README.txt <<EOL
+    cat >>$testsrc_dir/README.txt <<EOL
 Azure CLI Test Cases
 EOL
 
-pushd $testsrc_dir >/dev/null
-python setup.py -q bdist_wheel -d $output_dir
-python setup.py -q sdist -d $sdist_dir
-popd >/dev/null
+    pushd $testsrc_dir >/dev/null
+    python setup.py -q bdist_wheel -d $output_dir
+    python setup.py -q sdist -d $sdist_dir
+    popd >/dev/null
 
-##############################################
-# clear afterwards
-rm -rf $testsrc_dir
-git checkout src
+    ##############################################
+    # clear afterwards
+    rm -rf $testsrc_dir
+    git checkout src
+fi
 
 ##############################################
 # summary
